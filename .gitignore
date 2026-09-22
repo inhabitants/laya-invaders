@@ -1,0 +1,4 @@
+models/
+frames/
+.venv/
+__pycache__/

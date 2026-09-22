@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Laya Invaders</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0a; --fg: #f5f0e6; --muted: #8f8676; --dim: #2a2a2a;
+    --green: #8ef1a4; --amber: #ff6933; --red: #ff6933; --cyan: #c4b8a0;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); }
+  body { font: 13px/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace; min-height: 100vh; display: flex; justify-content: center; align-items: flex-start; padding: 16px; }
+  .wrap { display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; max-width: 100%; }
+  header { width: 100%; display: flex; justify-content: space-between; color: var(--muted); border-bottom: 1px solid var(--dim); padding-bottom: 6px; margin-bottom: 4px; }
+  header b { color: var(--green); font-weight: 600; }
+  canvas { display: block; background: var(--bg); border: 1px solid var(--dim); cursor: crosshair; max-width: 100%; height: auto; touch-action: manipulation; }
+  .panel { width: 340px; max-width: 100%; }
+  .row { display: flex; justify-content: space-between; gap: 12px; }
+  .label { color: var(--muted); letter-spacing: .04em; }
+  .sec { margin: 0 0 14px; }
+  .bar { height: 6px; background: var(--dim); margin-top: 4px; }
+  .bar > i { display: block; height: 100%; background: var(--green); width: 0; transition: width .12s; }
+  .opt { display: grid; grid-template-columns: 14px 1fr 96px 38px; gap: 8px; align-items: center; color: var(--muted); }
+  .opt.on { color: var(--green); }
+  .opt .b { height: 8px; background: var(--dim); }
+  .opt .b > i { display: block; height: 100%; background: currentColor; }
+  .kinds { display: flex; gap: 6px; margin-top: 6px; }
+  .kind { flex: 1; border: 1px solid var(--dim); padding: 4px 6px; color: var(--muted); cursor: pointer; background: none; font: inherit; text-align: left; }
+  .kind.on { border-color: currentColor; }
+  .keys { color: var(--muted); border-top: 1px solid var(--dim); padding-top: 8px; }
+  .big { font-size: 20px; font-weight: 600; }
+  .green { color: var(--green); } .amber { color: var(--amber); } .red { color: var(--red); } .cyan { color: var(--cyan); } .muted { color: var(--muted); }
+  #overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(9,15,19,.86); color: var(--muted); font-size: 15px; text-align: center; padding: 16px; }
+  #overlay[hidden] { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><span>LAYA&nbsp;&nbsp;/&nbsp;&nbsp;<b>INVADERS</b></span><span id="state">LIVE</span></header>
+  <canvas id="board" width="408" height="612" aria-label="Game board"></canvas>
+  <div class="panel">
+    <div class="sec">
+      <div class="row"><span class="green big">Laya</span><span id="device" class="label">…</span></div>
+      <div class="row"><span class="label" data-t="brain"></span><span id="brain" class="green"></span></div>
+    </div>
+    <div class="sec">
+      <div class="row"><span data-t="target"></span><span class="label" data-t="probs"></span></div>
+      <div id="opts"></div>
+    </div>
+    <div class="sec">
+      <div class="row"><span class="label" data-t="rulePicks"></span><span id="rule"></span></div>
+      <div class="row"><span class="label" data-t="agree"></span><span id="agree"></span></div>
+    </div>
+    <div class="sec">
+      <div class="row"><span class="label" data-t="pressure"></span><span id="pressureTxt" class="amber"></span></div>
+      <div class="bar"><i id="pressure" style="background: var(--amber)"></i></div>
+    </div>
+    <div class="sec">
+      <div class="row"><span class="label">INFERENCE</span><span id="lat"></span></div>
+      <div class="row"><span class="label">DECISIONS</span><span id="rate"></span></div>
+      <div class="row"><span class="label">OUTPUT TOKENS</span><span>0</span></div>
+    </div>
+    <div class="sec">
+      <div class="row"><span class="label" data-t="held"></span><span></span></div>
+      <div class="row"><span>Laya</span><span id="heldLaya" class="green"></span></div>
+      <div class="row"><span data-t="ruleName"></span><span id="heldRule" class="muted"></span></div>
+    </div>
+    <div class="sec">
+      <div class="row"><span data-t="you"></span><span id="energyTxt" class="label"></span></div>
+      <div class="bar"><i id="energy" style="background: var(--cyan)"></i></div>
+      <div class="kinds" id="kinds"></div>
+    </div>
+    <div class="keys" id="keys"></div>
+  </div>
+</div>
+<div id="overlay">Loading Laya…</div>
+<script src="game.js"></script>
+</body>
+</html>
