@@ -2,3 +2,4 @@ models/
 frames/
 .venv/
 __pycache__/
+attacks/

@@ -2,37 +2,50 @@
 
 [English](README.md) · **Português**
 
-Space Invaders ao contrário, como teste pra um modelo de decisão. Você (ou um bot) solta os invasores. O [Laya](https://github.com/NandhaKishorM/laya), um modelo de decisão de 322M da Convai Innovations, só escolhe qual o canhão persegue. Do lado, o mesmo ataque enfrenta uma regra de uma linha: atira no invasor que pousa primeiro.
+Humano contra máquina, na sua própria placa de vídeo. Space Invaders ao contrário: o seu PC é a Terra, você é o invasor, e o [Laya](https://github.com/NandhaKishorM/laya), um modelo de decisão pequeno da Convai Innovations, defende escolhendo qual invasor o canhão persegue.
 
-![Lado a lado no mesmo ataque: o Laya deixa invasor passar enquanto a regra de uma linha segura quase todos](docs/invaders.gif)
+![Ao vivo: uma pessoa solta invasores coluna por coluna enquanto o canhão do Laya escolhe os alvos numa RTX 3070](docs/live.gif)
 
-*Uma partida real numa RTX 3070, reproduzida em 1×. Mesmo ataque com semente dos dois lados.*
+*Ao vivo numa RTX 3070. O painel mostra as opções que o Laya recebe, as probabilidades dele e quando ele discorda da regra.*
+
+Inspirado no demo da cobrinha que o [mizorewww/laya-mlx](https://github.com/mizorewww/laya-mlx) criou pro Laya no Apple Silicon, que a gente portou pra NVIDIA e CPU no [laya-snake-cuda](https://github.com/inhabitants/laya-snake-cuda). Aquele demo mostra quão rápida é uma decisão tipada. Este pergunta se a decisão presta.
 
 ## Por que este teste
 
-O Laya responde perguntas tipadas com probabilidades numa passada só, com zero token de saída. No demo da cobrinha ([laya-snake-cuda](https://github.com/inhabitants/laya-snake-cuda)) um planejador escreve "Best" do lado de uma das opções, então aquele demo mostra velocidade e formato, não julgamento. Aqui o Laya recebe uma decisão de verdade: qual ameaça primeiro.
+O Laya é um modelo de 322M que não escreve texto: ele responde perguntas tipadas com probabilidades numa passada só, com zero token de saída. É a versão aberta dos modelos de decisão de "pensamento rápido" que produtos como o Jev prometem. Na cobrinha um planejador escreve "Best" do lado de uma das opções, então o modelo nunca precisa julgar. Aqui precisa: qual ameaça primeiro.
 
 ## O que deixa o teste justo
 
 - **Fato, não conselho.** Cada invasor chega como fato: o tipo, a distância do canhão, quantas rodadas faltam pra pousar e quantos tiros aguenta. Por exemplo: `tank, 3 columns to the left, lands in 42 ticks, needs 3 hits`. Nenhuma opção vem marcada como a melhor.
 - **A ordem não diz nada.** Quando tem mais de 5 invasores na tela, entram os 5 mais perto de pousar, listados da esquerda pra direita.
 - **As mesmas mãos.** Mirar e atirar é código comum, igual pros dois lados. A única coisa que muda é quem escolhe o alvo.
-- **O mesmo ataque.** O atacante é um bot com semente que nunca olha a defesa, então a mesma semente solta os mesmos invasores nas mesmas rodadas, seja quem for defendendo.
+- **O mesmo ataque.** Cada invasor que você solta é gravado com a rodada em que aconteceu. O teste reproduz o seu ataque exato contra o Laya e contra a régua, uma regra de uma linha: atira no invasor que pousa primeiro.
 
 O Laya também responde uma segunda pergunta na mesma passada (pressão: tranquila, apertada ou sufocada). O painel mostra; o canhão não usa.
 
 ## Resultado
 
-Mesma semente pros dois, 600 rodadas (60 segundos de jogo):
+**Um ataque humano, 24 invasores**, reproduzido invasor por invasor contra os dois cérebros:
 
-| Ataque | Regra (pousa primeiro) | Laya | Escolhas em comum |
+| Cérebro | Segurou | Passou |
+|---|---|---|
+| Regra de uma linha (pousa primeiro) | 23 | 1 |
+| Laya | 22 | 2 |
+
+Os dois escolheram o mesmo alvo em 64% das vezes, a uns 57 ms por decisão do Laya. Os 22 de 24 do Laya na reprodução batem com o que o painel mostrou ao vivo enquanto o ataque acontecia.
+
+![Lado a lado: o mesmo ataque humano contra o Laya e contra a regra de uma linha](docs/invaders.gif)
+
+**Um bot com semente apertando mais**, 600 rodadas, o mesmo ataque pros dois:
+
+| Ataque | Regra | Laya | Escolhas em comum |
 |---|---|---|---|
 | Normal | 52 de 52 | 50 de 52 | 86% |
 | Energia dobrada pro atacante | 87 de 89 | 71 de 87 | 35% |
 
-Uns 50 ms por decisão do Laya na RTX 3070. A regra ganha, e a diferença cresce com a pressão. As partidas são determinísticas: a mesma semente deu os mesmos números duas vezes.
+A regra ganha, e a diferença cresce com a pressão. As partidas são determinísticas: o mesmo ataque dá os mesmos números toda vez.
 
-Rápido e bem formatado não é o mesmo que saber pesar. Deixa uma régua burra do lado de qualquer modelo de decisão.
+Rápido não quer dizer que sabe pesar: modelo de decisão só prova que vale com uma regra burra do lado.
 
 ## Rodar
 
@@ -61,21 +74,21 @@ O `--download` baixa o checkpoint multilíngue (~0,65 GB) em `./models/laya`, tr
 | **Clique** numa coluna | Solta um invasor ali |
 | **1 2 3** | Escolhe o tipo: corredor, zigue-zague, tanque |
 | **M** | Troca o cérebro entre o Laya e a regra |
-| **T** | Liga ou desliga o bot atacante |
-| **Espaço** / **R** / **+ -** | Pausa / reinicia / velocidade |
+| **T** | Liga ou desliga o bot atacante (o que o bot solta não é gravado) |
+| **Espaço** / **R** / **+ -** | Pausa / nova gravação / velocidade |
 
 Tela em português: http://127.0.0.1:8765/?lang=pt
 
-## Repetir o teste
+## Reproduzir o seu ataque
 
-No console do navegador:
+Enquanto você joga, o painel mostra `REC` e cada invasor fica salvo em `attacks/` (um arquivo por sessão, mais o `latest.json`). Quando terminar, no console do navegador:
 
 ```js
-layaInvaders.run({ ticks: 600, seed: 1, energyEvery: 3 })  // uns 2 minutos
+layaInvaders.runHuman()   // o seu último ataque contra os dois cérebros
 layaInvaders.summary()
 ```
 
-`energyEvery: 6` é o ataque normal, `3` o dobrado. Pra exportar a reprodução lado a lado, suba o servidor com `--frames-dir frames`, rode o teste, depois `layaInvaders.exportRun({ from: 0, to: 600 })` e transforme os quadros em vídeo:
+Pro teste com bot: `layaInvaders.run({ ticks: 600, seed: 1, energyEvery: 3 })` (`6` é o ataque normal, `3` o dobrado). Pra exportar a reprodução lado a lado, suba o servidor com `--frames-dir frames`, rode um teste, depois `layaInvaders.exportRun({ from: 0, to: 600 })` e transforme os quadros em vídeo:
 
 ```bash
 ffmpeg -framerate 10 -i frames/f%05d.png -r 30 -c:v libx264 -crf 20 -pix_fmt yuv420p replay.mp4

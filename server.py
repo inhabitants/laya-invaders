@@ -3,6 +3,8 @@
 GET  /             the game (index.html, game.js)
 GET  /info         {"ready": bool, "hardware", "engine", "precision", "model"} while the model loads
 POST /decide       {"state": str|dict, "questions": {...}} -> Laya's answers + inference_ms
+POST /attack       the page's log of human drops (tick, column, kind), kept in attacks/
+GET  /attack       the latest human attack, which the bench replays against both brains
 POST /frame/NNNNN  a PNG of the side-by-side replay, saved as fNNNNN.png; only exists when the
                    server was started with --frames-dir (turn the frames into video with ffmpeg)
 
@@ -31,6 +33,8 @@ STATIC = {
 }
 MAX_BODY = 64 * 1024
 MAX_FRAME = 8 * 1024 * 1024
+MAX_ATTACK = 512 * 1024
+ATTACKS = HERE / "attacks"  # recorded human attacks, replayed by the bench (not versioned)
 MAX_QUESTIONS = 6
 QTYPES = ("choice", "score", "noul")
 
@@ -112,6 +116,11 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         if path == "/info":
             return self.send_json(200, RUNTIME["info"])
+        if path == "/attack":
+            latest = ATTACKS / "latest.json"
+            if not latest.is_file():
+                return self.send_json(404, {"error": "no human attack saved yet"})
+            return self.send_json(200, json.loads(latest.read_text(encoding="utf-8")))
         if path in STATIC:
             name, kind = STATIC[path]
             body = (HERE / name).read_bytes()
@@ -127,6 +136,8 @@ class Handler(BaseHTTPRequestHandler):
         frame = re.fullmatch(r"/frame/(\d{5})", self.path)
         if frame and RUNTIME["frames"] is not None:
             return self.save_frame(frame.group(1))
+        if self.path == "/attack":
+            return self.save_attack()
         if self.path != "/decide":
             return self.send_json(404, {"error": "not found"})
         agent = RUNTIME["agent"]
@@ -150,6 +161,35 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as error:
             return self.send_json(422, {"error": str(error)})
         self.send_json(200, output)
+
+    def save_attack(self):
+        """The page's log of human drops: attacks/<id>.json per session, plus latest.json."""
+        length = int(self.headers.get("Content-Length") or 0)
+        if not 0 < length <= MAX_ATTACK:
+            return self.send_json(413, {"error": "attack log too large"})
+        try:
+            attack = json.loads(self.rfile.read(length))
+            sid, ticks, spawns = attack["id"], attack["ticks"], attack["spawns"]
+        except (ValueError, KeyError, TypeError):
+            return self.send_json(400, {"error": "expected {id, ticks, spawns}"})
+        ok = (
+            isinstance(sid, str) and re.fullmatch(r"[a-z0-9]{1,16}", sid)
+            and isinstance(ticks, int) and 0 <= ticks <= 10**6 and isinstance(spawns, list)
+            and all(
+                isinstance(s, dict) and isinstance(s.get("tick"), int) and isinstance(s.get("col"), int)
+                and s.get("kind") in ("runner", "zigzag", "tank") and s.get("dir") in (-1, 1)
+                for s in spawns
+            )
+        )
+        if not ok:
+            return self.send_json(400, {"error": "invalid attack log"})
+        record = {"id": sid, "ticks": ticks, "energyEvery": attack.get("energyEvery", 6), "spawns": spawns,
+                  "savedAt": time.strftime("%Y-%m-%dT%H:%M:%S")}
+        ATTACKS.mkdir(parents=True, exist_ok=True)
+        text = json.dumps(record)
+        (ATTACKS / f"{sid}.json").write_text(text, encoding="utf-8")
+        (ATTACKS / "latest.json").write_text(text, encoding="utf-8")
+        self.send_json(200, {"saved": len(spawns)})
 
     def save_frame(self, number):
         length = int(self.headers.get("Content-Length") or 0)

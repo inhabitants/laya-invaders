@@ -2,37 +2,50 @@
 
 **English** · [Português](README.pt-BR.md)
 
-Space Invaders, flipped, as a test for a decision model. You (or a bot) drop the invaders. [Laya](https://github.com/NandhaKishorM/laya), a 322M decision model by Convai Innovations, only picks which one the cannon chases. Next to it, the same attack faces a one-line rule: shoot the invader that lands first.
+Human vs machine, on your own graphics card. Space Invaders, flipped: your PC is Earth, you are the invader, and [Laya](https://github.com/NandhaKishorM/laya), a small decision model by Convai Innovations, defends it by picking which invader the cannon chases.
 
-![Side by side on the same attack: Laya lets invaders through while the one-line rule holds almost all of them](docs/invaders.gif)
+![Live: a human drops invaders column by column while Laya's cannon picks targets on an RTX 3070](docs/live.gif)
 
-*A real run on an RTX 3070, replayed at 1×. Same seeded attack on both sides.*
+*Live on an RTX 3070. The panel shows the options Laya gets, its probabilities, and when it disagrees with the rule.*
+
+Inspired by the Snake demo that [mizorewww/laya-mlx](https://github.com/mizorewww/laya-mlx) built for Laya on Apple Silicon, which we ported to NVIDIA and CPU in [laya-snake-cuda](https://github.com/inhabitants/laya-snake-cuda). That demo shows how fast a typed decision is. This one asks whether the decision is any good.
 
 ## Why this test
 
-Laya answers typed questions with probabilities in one forward pass, with zero output tokens. In the Snake demo ([laya-snake-cuda](https://github.com/inhabitants/laya-snake-cuda)) a planner writes "Best" next to one of the options, so that demo shows speed and format, not judgment. Here Laya gets a real call: which threat first.
+Laya is a 322M model that doesn't write text: it answers typed questions with probabilities in one forward pass, with zero output tokens. It is the open take on the "fast thinking" decision models that products like Jev promise. In the Snake demo a planner writes "Best" next to one of the options, so the model never has to judge. Here it does: which threat first.
 
 ## What keeps it fair
 
 - **Facts, not advice.** Each invader is offered as plain facts: kind, how far from the cannon, ticks until it lands, hits it takes. For example: `tank, 3 columns to the left, lands in 42 ticks, needs 3 hits`. No option is marked as the best one.
 - **Order says nothing.** When more than 5 invaders are on screen, the 5 closest to landing are offered, listed left to right.
 - **Same hands.** Aiming and firing are plain code, identical for both sides. The only thing that differs is who picks the target.
-- **Same attack.** The attacker is a seeded bot that never looks at the defense, so the same seed drops the same invaders at the same ticks, whoever defends.
+- **Same attack.** Every invader you drop is recorded with the tick it happened on. The bench replays your exact attack against Laya and against the baseline, a one-line rule: shoot the invader that lands first.
 
 Laya also answers a second question in the same pass (pressure: calm, busy or overwhelmed). The panel shows it; the cannon doesn't use it.
 
 ## Results
 
-Same seed for both, 600 ticks (60 seconds of game):
+**One human attack, 24 invaders**, replayed drop by drop against both brains:
 
-| Attack | Rule (lands first) | Laya | Picks in common |
+| Brain | Held | Got through |
+|---|---|---|
+| One-line rule (lands first) | 23 | 1 |
+| Laya | 22 | 2 |
+
+They picked the same target 64% of the time, at about 57 ms per Laya decision. Laya's 22 of 24 in the replay matches what the live panel showed while the attack was happening.
+
+![Side by side: the same human attack against Laya and against the one-line rule](docs/invaders.gif)
+
+**A seeded bot pushing harder**, 600 ticks, same attack for both:
+
+| Attack | Rule | Laya | Picks in common |
 |---|---|---|---|
 | Normal | 52 of 52 | 50 of 52 | 86% |
 | Double energy for the attacker | 87 of 89 | 71 of 87 | 35% |
 
-About 50 ms per Laya decision on the RTX 3070. The rule wins, and the gap grows with the pressure. The runs are deterministic: the same seed gave the same numbers twice.
+The rule wins, and the gap grows with the pressure. The runs are deterministic: the same attack gives the same numbers every time.
 
-Fast and well-formed is not the same as good at weighing. Keep a dumb baseline next to any decision model.
+Fast doesn't mean it knows how to weigh: a decision model only proves itself with a dumb rule next to it.
 
 ## Run it
 
@@ -61,21 +74,21 @@ python server.py
 | **Click** a column | Drop an invader there |
 | **1 2 3** | Pick the kind: runner, zigzag, tank |
 | **M** | Swap the brain between Laya and the rule |
-| **T** | Turn the bot attacker on or off |
-| **Space** / **R** / **+ -** | Pause / reset / speed |
+| **T** | Turn the bot attacker on or off (bot drops are not recorded) |
+| **Space** / **R** / **+ -** | Pause / new recording / speed |
 
 Portuguese on screen: http://127.0.0.1:8765/?lang=pt
 
-## Repeat the bench
+## Replay your own attack
 
-In the browser console:
+While you play, the panel shows `REC` and every drop is saved to `attacks/` (one file per session, plus `latest.json`). When you're done, in the browser console:
 
 ```js
-layaInvaders.run({ ticks: 600, seed: 1, energyEvery: 3 })  // about 2 minutes
+layaInvaders.runHuman()   // your latest attack against both brains
 layaInvaders.summary()
 ```
 
-`energyEvery: 6` is the normal attack, `3` the double one. To export the side-by-side replay, start the server with `--frames-dir frames`, run the bench, then `layaInvaders.exportRun({ from: 0, to: 600 })` and turn the frames into video:
+For the bot bench: `layaInvaders.run({ ticks: 600, seed: 1, energyEvery: 3 })` (`6` is the normal attack, `3` the double one). To export the side-by-side replay, start the server with `--frames-dir frames`, run a bench, then `layaInvaders.exportRun({ from: 0, to: 600 })` and turn the frames into video:
 
 ```bash
 ffmpeg -framerate 10 -i frames/f%05d.png -r 30 -c:v libx264 -crf 20 -pix_fmt yuv420p replay.mp4

@@ -85,6 +85,8 @@ function fresh(keep) {
     stats: keep?.stats ?? { laya: { killed: 0, leaked: 0 }, rule: { killed: 0, leaked: 0 } },
     agree: keep?.agree ?? { same: 0, total: 0 },
     lat: [], stamps: [], errors: 0, flashLeak: 0, hover: null,
+    // Every invader the player drops, so the bench can replay the exact same human attack.
+    attack: { id: Math.random().toString(36).slice(2, 10), spawns: [] },
   };
 }
 
@@ -98,13 +100,36 @@ function rulePick(list = alive()) {
     landIn(c) < landIn(best) || (landIn(c) === landIn(best) && Math.abs(c.col - S.cannon) < Math.abs(best.col - S.cannon)) ? c : best);
 }
 
-function spawn(col, kind = S.kind) {
+function spawn(col, kind = S.kind, dir = S.rng() < 0.5 ? -1 : 1) {
   const k = KINDS[kind];
   if (S.energy < k.cost || col < 0 || col >= COLS) return false;
   S.energy -= k.cost;
-  S.creatures.push({ id: S.nextId++, kind, col, row: 0, hp: k.hp, age: 0, dir: S.rng() < 0.5 ? -1 : 1 });
+  S.creatures.push({ id: S.nextId++, kind, col, row: 0, hp: k.hp, age: 0, dir });
   return true;
 }
+
+// A human drop: spawn it, log it with the tick it happened on, and send the log to the server,
+// which keeps it in attacks/ (the bench replays it against both brains).
+function humanSpawn(col) {
+  const dir = S.rng() < 0.5 ? -1 : 1;
+  if (!spawn(col, S.kind, dir)) return;
+  S.attack.spawns.push({ tick: S.tick, col, kind: S.kind, dir });
+  saveAttack();
+}
+
+let saving = false;
+async function saveAttack() {
+  if (saving || benching || !S.attack.spawns.length) return;
+  saving = true;
+  try {
+    await fetch("/attack", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: S.attack.id, ticks: S.tick, energyEvery: S.energyEvery, spawns: S.attack.spawns }),
+    });
+  } catch { /* the next drop or the periodic save retries */ }
+  saving = false;
+}
+setInterval(saveAttack, 3000);
 
 function autoAttack() {
   // A simple attacker for tests and footage: spend energy in random bursts.
@@ -269,20 +294,30 @@ function frameOf() {
   };
 }
 
-// Same seeded attack for both brains, one Laya decision before every tick, no wall clock:
-// what differs between the two runs is only who picks the target. Every tick is recorded,
-// so the two runs can be replayed side by side.
-async function bench({ ticks = 600, seed = 1, energyEvery = ENERGY_EVERY } = {}) {
+// The same attack for both brains, one Laya decision before every tick, no wall clock: what
+// differs between the two runs is only who picks the target. The attack is either a seeded bot
+// or a recorded human one (`attack`, as saved in attacks/), replayed drop by drop on the tick it
+// happened, plus `tail` ticks so the invaders still on screen land or die. Every tick is
+// recorded, so the two runs can be replayed side by side.
+async function bench({ ticks = 600, seed = 1, energyEvery = ENERGY_EVERY, attack = null, tail = 150 } = {}) {
   benching = true;
-  const saved = S, result = { ticks, seed, energyEvery, frames: {} };
+  // Up to the last human drop plus the tail: the page keeps saving while it stays open, so the
+  // log's own tick count can run far past the moment the player stopped.
+  if (attack) { ticks = Math.max(...attack.spawns.map((s) => s.tick)) + 1 + tail; energyEvery = attack.energyEvery ?? ENERGY_EVERY; }
+  const byTick = new Map();
+  for (const s of attack?.spawns ?? []) byTick.set(s.tick, [...(byTick.get(s.tick) ?? []), s]);
+  const saved = S, result = { ticks, seed, energyEvery, attacker: attack ? "human" : "bot", drops: attack?.spawns.length, frames: {} };
   try {
     for (const brain of ["rule", "laya"]) {
       S = fresh({ energyEvery });
-      Object.assign(S, { brain, auto: true, rng: mulberry32(seed), stats: { laya: { killed: 0, leaked: 0 }, rule: { killed: 0, leaked: 0 } }, agree: { same: 0, total: 0 } });
-      let spawned = 0;
+      Object.assign(S, { brain, auto: !attack, rng: mulberry32(seed), stats: { laya: { killed: 0, leaked: 0 }, rule: { killed: 0, leaked: 0 } }, agree: { same: 0, total: 0 } });
+      let spawned = 0, missed = 0;
       const frames = [];
       const t0 = performance.now();
       for (let i = 0; i < ticks; i++) {
+        for (const s of byTick.get(i) ?? []) {
+          if (spawn(s.col, s.kind, s.dir)) spawned++; else missed++;
+        }
         if (brain === "laya") {
           const snap = snapshot();
           if (snap) applyDecision(snap, await decide(snap));
@@ -293,7 +328,7 @@ async function bench({ ticks = 600, seed = 1, energyEvery = ENERGY_EVERY } = {})
         frames.push(frameOf());
       }
       const s = S.stats[brain];
-      result[brain] = { spawned, killed: s.killed, leaked: s.leaked, held: s.killed / Math.max(1, s.killed + s.leaked), seconds: (performance.now() - t0) / 1000 };
+      result[brain] = { spawned, missed, killed: s.killed, leaked: s.leaked, held: s.killed / Math.max(1, s.killed + s.leaked), seconds: (performance.now() - t0) / 1000 };
       if (brain === "laya") {
         result.laya.agreeWithRule = S.agree.same / Math.max(1, S.agree.total);
         result.laya.meanMs = S.lat.reduce((a, b) => a + b, 0) / Math.max(1, S.lat.length);
@@ -372,8 +407,11 @@ function textOn(g, str, x, y, { size = 20, weight = 400, color = C.fg, font = FO
 
 function renderSplit(g, result, i, W, H) {
   g.fillStyle = C.bg; g.fillRect(0, 0, W, H);
-  textOn(g, "Same attack. Two brains.", 90, 92, { size: 54, weight: 700 });
-  textOn(g, "A seeded bot drops the invaders, the same ones on both sides. Each brain only picks which one the cannon chases; aiming and firing are the same code.", 90, 132, { size: 21, color: C.sand });
+  const human = result.attacker === "human";
+  textOn(g, human ? "Human vs machine. We are the invaders." : "Same attack. Two brains.", 90, 92, { size: 54, weight: 700 });
+  textOn(g, human
+    ? "One real human attack, replayed drop by drop against both brains. Each brain only picks which invader the cannon chases; aiming and firing are the same code."
+    : "A seeded bot drops the invaders, the same ones on both sides. Each brain only picks which one the cannon chases; aiming and firing are the same code.", 90, 132, { size: 21, color: C.sand });
   g.fillStyle = C.orange; g.fillRect(90, 152, 120, 3);
 
   const cell = 40, top = 262;
@@ -530,7 +568,8 @@ function panel() {
     $(id).textContent = n ? `${s.killed} ${TEXT.of} ${n}  (${pct(s.killed, n)}%)` : "-";
   }
   $("energy").style.width = `${(S.energy / ENERGY_MAX) * 100}%`;
-  $("energyTxt").textContent = `${TEXT.energy} ${S.energy}/${ENERGY_MAX}${S.auto ? "  · AUTO" : ""}`;
+  const rec = S.attack.spawns.length ? `  · REC ${S.attack.spawns.length} · ${Math.floor(S.tick / 10)} s` : "";
+  $("energyTxt").textContent = `${TEXT.energy} ${S.energy}/${ENERGY_MAX}${S.auto ? "  · AUTO" : rec}`;
   for (const b of document.querySelectorAll(".kind")) b.classList.toggle("on", b.dataset.kind === S.kind);
 }
 
@@ -540,7 +579,7 @@ function columnAt(event) {
   const r = canvas.getBoundingClientRect();
   return Math.floor(((event.clientX - r.left) / r.width) * COLS);
 }
-canvas.addEventListener("pointerdown", (e) => { if (!S.paused) spawn(columnAt(e)); });
+canvas.addEventListener("pointerdown", (e) => { if (!S.paused && !benching) humanSpawn(columnAt(e)); });
 canvas.addEventListener("pointermove", (e) => { S.hover = columnAt(e); });
 canvas.addEventListener("pointerleave", () => { S.hover = null; });
 
@@ -588,6 +627,12 @@ window.layaInvaders = {
   set auto(v) { S.auto = v; }, set brain(v) { S.brain = v; },
   run(opts) { this.last = "running"; bench(opts).then((r) => { this.last = r; }, (e) => { this.last = String(e); }); return "started"; },
   summary() { const r = this.last; return r?.frames ? { ...r, frames: undefined } : r; },
+  // Replays the latest saved human attack (attacks/latest.json) against both brains.
+  async runHuman(opts = {}) {
+    const attack = await (await fetch("/attack")).json();
+    if (!attack.spawns?.length) return "no human attack saved yet";
+    return this.run({ ...opts, attack });
+  },
   window(seconds) { return busiestWindow(this.last, seconds); },
   exportRun(range) { this.exported = "running"; exportSplit(range).then((r) => { this.exported = r; }, (e) => { this.exported = String(e); }); return "started"; },
 };
