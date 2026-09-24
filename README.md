@@ -1,6 +1,6 @@
 # laya-invaders
 
-**English** · [Português](README.pt-BR.md)
+**English** · [Português](README.pt-BR.md) · [Site](https://www.sapiensinteticos.com/laya-invaders)
 
 Human vs machine, on your own graphics card. Space Invaders, flipped: your PC is Earth, you are the invader, and [Laya](https://github.com/NandhaKishorM/laya), a small decision model by Convai Innovations, defends it by picking which invader the cannon chases.
 

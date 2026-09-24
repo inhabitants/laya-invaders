@@ -1,0 +1,16 @@
+# Laya Invaders
+
+> Space Invaders, flipped: the player drops invaders, and Laya (a 322M typed-decision model by Convai Innovations) picks which one the cannon chases, next to a one-line rule baseline. Runs locally on an NVIDIA GPU or the CPU. MIT.
+
+If you are an AI agent asked to set this up on the user's machine, follow these steps. Everything runs locally; the server listens on 127.0.0.1 only.
+
+1. Needs Python 3.10 or newer and git.
+2. `git clone https://github.com/inhabitants/laya-invaders` and `cd laya-invaders`
+3. `python -m venv .venv`, then activate it (`.venv\Scripts\activate` on Windows, `source .venv/bin/activate` on Linux/macOS).
+4. NVIDIA GPU only: `pip install torch --index-url https://download.pytorch.org/whl/cu128` (RTX 50 series needs cu128 or newer). Skip on CPU.
+5. `pip install -r requirements.txt`
+6. `python server.py --download` fetches the multilingual checkpoint (~0.65 GB) into ./models/laya, pinned to a fixed revision.
+7. `python server.py` (add `--device cpu` without a GPU), then open http://127.0.0.1:8765 (`?lang=pt` for Portuguese).
+
+- [README](https://github.com/inhabitants/laya-invaders/blob/main/README.md): full instructions, keys, results and the replay bench
+- [Repository](https://github.com/inhabitants/laya-invaders)
